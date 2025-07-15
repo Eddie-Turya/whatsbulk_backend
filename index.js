@@ -1,49 +1,48 @@
-const express = require('express');
-const cors = require('cors');
-const app = express();
+import express from 'express';
+import cors from 'cors';
+import mysql from 'mysql2/promise';
+import dotenv from 'dotenv';
 
-// Middleware
+dotenv.config();
+const app = express();
+const port = process.env.PORT || 3000;
+
 app.use(cors());
 app.use(express.json());
 
-// Root Test
+// Create DB Pool
+const db = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME
+});
+
+// Endpoint to handle WhatsApp bulk message requests
+app.post('/send-bulk', async (req, res) => {
+  const { sender, message, recipients } = req.body;
+
+  if (!sender || !message || !recipients || !Array.isArray(recipients)) {
+    return res.status(400).json({ success: false, message: 'Invalid input' });
+  }
+
+  try {
+    const insert = await db.query(
+      `INSERT INTO message_requests (sender_number, message, recipients, created_at) VALUES (?, ?, ?, NOW())`,
+      [sender, message, JSON.stringify(recipients)]
+    );
+
+    res.json({ success: true, message: 'Message request stored successfully', request_id: insert[0].insertId });
+  } catch (err) {
+    console.error('DB Error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 app.get('/', (req, res) => {
-  res.send('✅ WhatsBulk API Running');
+  res.send('WhatsBulk Backend Running ✅');
 });
 
-// POST: Receive bulk WhatsApp message request
-app.post('/send-bulk', (req, res) => {
-  const { senderNumber, message, recipients } = req.body;
-
-  if (!senderNumber || !message || !Array.isArray(recipients)) {
-    return res.status(400).json({ error: 'Missing required fields' });
-  }
-
-  if (recipients.length > 50) {
-    return res.status(400).json({ error: 'Maximum 50 recipients allowed' });
-  }
-
-  // For now, we just simulate sending messages
-  const results = recipients.map((num, i) => ({
-    to: num,
-    status: 'queued',
-    messageId: `msg_${Date.now()}_${i}`
-  }));
-
-  console.log(`[SEND] From: ${senderNumber}`);
-  console.log(`[MESSAGE] ${message}`);
-  console.log(`[RECIPIENTS]`, recipients);
-
-  res.json({
-    success: true,
-    count: recipients.length,
-    status: 'messages queued',
-    data: results
-  });
-});
-
-// Listen on port
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`WhatsBulk API running on port ${PORT}`);
+app.listen(port, () => {
+  console.log(`✅ Server running on http://localhost:${port}`);
 });
